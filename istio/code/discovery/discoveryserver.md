@@ -16,7 +16,7 @@ description: >
 
 pilot discovery的服务器server对象包含一个名为DiscoveryServer组件，存储这个对象的字段名为EnvoyXdsServer，见下面的定义
 
-```
+``` golang
 // Server contains the runtime configuration for the Pilot discovery service.
 type Server struct {
     ...
@@ -77,7 +77,7 @@ type Server struct {
 
 当创建server时，首先会创建一个Environment对象，并将其存储在server中。接下来它会用Environment作为第一个参数来创建DiscoveryServer对象。
 
-```
+``` golang
 func NewServer(args *PilotArgs) (*Server, error) {
 	e := &model.Environment{
 		ServiceDiscovery: aggregate.NewController(),
@@ -93,7 +93,7 @@ func NewServer(args *PilotArgs) (*Server, error) {
 	}
 ```
 
-```
+``` golang
 func NewDiscoveryServer(env *model.Environment, plugins []string) *DiscoveryServer {
 	out := &DiscoveryServer{
 		Env:                     env,
@@ -114,7 +114,7 @@ pilot discovery server与envoy的交互分成两种方式：第一种是建立�
 
 当envoy向server发起请求后，server使用这个函数来对envoy连接进行处理，下面是整体的框架
 
-```
+``` golang
 func (s *DiscoveryServer) StreamAggregatedResources(stream ads.AggregatedDiscoveryService_StreamAggregatedResourcesServer) error {
 
 	err := s.globalPushContext().InitContext(s.Env, nil, nil)
@@ -167,7 +167,7 @@ func (s *DiscoveryServer) StreamAggregatedResources(stream ads.AggregatedDiscove
 2. 当envoy proxy向DiscoveryServer发起连接的时候，会在内部创建针对这个envoy proxy的XdsConnection对象。`con := newXdsConnection(peerAddr, stream)` 这时连接已经正常建立，初始化阶段结束，会进入监听状态，DiscoveryServer会监听envoy proxy发起的请求。
 3. envoy proxy发起第一个具体的请求，DiscoveryServer会从XdsConnection对象中读取数据流，从数据流中提取出DiscoveryRequest对象。
 
-   ```
+   ``` golang
         reqChannel := make(chan *xdsapi.DiscoveryRequest, 1)
         go receiveThread(con, reqChannel, &receiveError)
 
@@ -182,7 +182,7 @@ func (s *DiscoveryServer) StreamAggregatedResources(stream ads.AggregatedDiscove
         ...
    ```
 
-   ```
+   ``` golang
     func receiveThread(con *XdsConnection, reqChannel chan *xdsapi.DiscoveryRequest, errP *error) {
         for {
             req, err := con.stream.Recv()
@@ -200,7 +200,7 @@ func (s *DiscoveryServer) StreamAggregatedResources(stream ads.AggregatedDiscove
 
 4. 根据DiscoveryRequest的Node成员变量，创建针对当前envoy proxy的Proxy对象并将其初始化(包括Proxy中SidecarScope等成员的初始化)，然后将它存到XdsConnection中的node成员变量中。注意，这一步只在envoy proxy第一次发起具体请求时执行，因为只需要执行一次。
 
-    ```
+    ``` golang
 			// This should be only set for the first request. The node id may not be set - for example malicious clients.
 			if con.node == nil {
 				if err := s.initConnection(discReq.Node, con); err != nil {
@@ -216,7 +216,7 @@ func (s *DiscoveryServer) StreamAggregatedResources(stream ads.AggregatedDiscove
 
 接下来根据envoy的请求类型分别进行处理。下面以envoy请求Cluster类型的资源为例详细分析。
 
-```
+``` golang
 func (s *DiscoveryServer) handleCds(con *XdsConnection, discReq *xdsapi.DiscoveryRequest) error {
     ...
 	err := s.pushCds(con, s.globalPushContext(), versionInfo())
@@ -229,7 +229,7 @@ func (s *DiscoveryServer) handleCds(con *XdsConnection, discReq *xdsapi.Discover
 
 会将`Environment.PushContext`作为第二个参数传递给`pushCds()`
 
-```
+``` golang
 func (s *DiscoveryServer) pushCds(con *XdsConnection, push *model.PushContext, version string) error {
     ...
 	rawClusters := s.ConfigGenerator.BuildClusters(con.node, push)
@@ -243,7 +243,7 @@ func (s *DiscoveryServer) pushCds(con *XdsConnection, push *model.PushContext, v
 
 进而将`Environment.PushContext`作为第二个参数传递给`BuildClusters()`，通过这个函数来获取所有的cluster数据。
 
-```
+``` golang
 func (configgen *ConfigGeneratorImpl) BuildClusters(proxy *model.Proxy, push *model.PushContext) []*apiv2.Cluster {
 	clusters := make([]*apiv2.Cluster, 0)
 	cb := NewClusterBuilder(proxy, push)
@@ -273,7 +273,7 @@ func (configgen *ConfigGeneratorImpl) BuildClusters(proxy *model.Proxy, push *mo
 
 `BuildClusters()`里的逻辑涉及到具体的envoy配置，分为多种不同的cluster，详细的分析过程可以关注这个系列的后续文章。这里重点关注PushContext的使用，这里以其中的`buildOutboundClusters()`为例
 
-```
+``` golang
 func (configgen *ConfigGeneratorImpl) buildOutboundClusters(proxy *model.Proxy, push *model.PushContext) []*apiv2.Cluster {
 	clusters := make([]*apiv2.Cluster, 0)
     ...
@@ -302,7 +302,7 @@ func (configgen *ConfigGeneratorImpl) buildOutboundClusters(proxy *model.Proxy, 
 
 `DiscoveryServer`有一个`pushQueue`字段，是一个用来存储push操作的队列，当需要给envoy推送配置的时候，会将这个请求加入队列，在后续处理的时候，再出队列进行真正的push操作。
 
-```
+``` golang
 type PushQueue struct {
 	mu   *sync.RWMutex
 	cond *sync.Cond
@@ -330,7 +330,7 @@ type PushQueue struct {
 
 `DiscoveryServer`有一个`pushChannel`字段，是一个用来暂存push操作的chan
 
-```
+``` golang
 type PushQueue struct {
 	pushChannel chan *model.PushRequest
     ...
@@ -339,7 +339,7 @@ type PushQueue struct {
 
 在初始化的时候，将它的大小设置为10
 
-```
+``` golang
 func NewDiscoveryServer(env *model.Environment, plugins []string) *DiscoveryServer {
 	out := &DiscoveryServer{
         ...
@@ -353,7 +353,7 @@ func NewDiscoveryServer(env *model.Environment, plugins []string) *DiscoveryServ
 
 当discovery server在watch到Config对象(包括kube svc对象和istio crd等)有更新的时候，会将push请求发送给这个chan
 
-```
+``` golang
 func (s *DiscoveryServer) ConfigUpdate(req *model.PushRequest) {
 	inboundConfigUpdates.Increment()
 	s.pushChannel <- req
@@ -364,7 +364,7 @@ func (s *DiscoveryServer) ConfigUpdate(req *model.PushRequest) {
 
 当DiscoveryServer启动后，有一个专门的函数来从DiscoveryServer.pushChannel中取得请求数据
 
-```
+``` golang
 func (s *DiscoveryServer) Start(stopCh <-chan struct{}) {
     ...
 	go s.handleUpdates(stopCh)
@@ -386,7 +386,7 @@ func (s *DiscoveryServer) handleUpdates(stopCh <-chan struct{}) {
 
 在DiscoveryServer启动后，有一个函数从DiscoveryServer.pushQueue这个队列中取出envoy connection和对应的push request对象
 
-```
+``` golang
 func (s *DiscoveryServer) Start(stopCh <-chan struct{}) {
     ...
 	go s.sendPushes(stopCh)
@@ -432,7 +432,7 @@ func doSendPushes(stopCh <-chan struct{}, semaphore chan struct{}, queue *PushQu
 
 接下来的处理逻辑在`StreamAggregatedResources()`这个函数中，这个函数的其它内容请见上一节的内容，这里只关注envoy connection的pushChannel的处理。
 
-```
+``` golang
 func (s *DiscoveryServer) StreamAggregatedResources(stream ads.AggregatedDiscoveryService_StreamAggregatedResourcesServer) error {
     ...
 	con := newXdsConnection(peerAddr, stream)

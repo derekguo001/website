@@ -18,7 +18,7 @@ pilot discovery内部维护了一套自己的数据结构，外部的对象被�
 
 在这三类基本对象的基础上进行了一些聚合，形成了另一个抽象的对象ServiceInstance
 
-```
+``` golang
 type ServiceInstance struct {
 	Service     *Service       `json:"service,omitempty"`
 	ServicePort *Port          `json:"servicePort,omitempty"`
@@ -30,7 +30,7 @@ type ServiceInstance struct {
 
 1. Controller
 
-    ```
+    ``` golang
     type Controller interface {
         AppendServiceHandler(f func(*Service, Event)) error
         AppendInstanceHandler(f func(*ServiceInstance, Event)) error
@@ -47,7 +47,7 @@ type ServiceInstance struct {
 
 2. ServiceDiscovery
 
-   ```
+   ``` golang
    type ServiceDiscovery interface {
        Services() ([]*Service, error)
        GetService(hostname host.Name) (*Service, error)
@@ -70,7 +70,7 @@ type ServiceInstance struct {
 
 首先，定义了一个Instance接口，注意它完全不同于上文提到的ServiceInstance，它们是完全不相关的两个东西。
 
-```
+``` golang
 type Instance interface {
 	model.Controller
 	model.ServiceDiscovery
@@ -87,7 +87,7 @@ type Instance interface {
 
 接下来看`Provider()`，它的返回值是一个字符串，实际上就是某一种实现的具体类型。
 
-```
+``` golang
 // ProviderID defines underlying platform supporting service registry
 type ProviderID string
 
@@ -110,7 +110,7 @@ pilot discovery定义了Instance接口作为某一种具体实现的父类，具
 由于有这么多具体的实现，为了对它们进行统一管理，pilot discovery又定义了另外一个对象serviceregistry.aggregate.Controller。
 代码在`pilot/pkg/serviceregistry/aggregate`中。
 
-```
+``` golang
 type Controller struct {
 	registries []serviceregistry.Instance
 	storeLock  sync.RWMutex
@@ -123,7 +123,7 @@ type Controller struct {
 
 例如下面是对应于ServiceDiscovery Interface的`Services() ([]*Service, error)`的实现
 
-```
+``` golang
 func (c *Controller) Services() ([]*model.Service, error) {
     ...
 	services := make([]*model.Service, 0)
@@ -149,7 +149,7 @@ func (c *Controller) Services() ([]*model.Service, error) {
 
 Istio pilot discovery有一个总的Server对象
 
-```
+``` golang
 type Server struct {
     ...
 	environment *model.Environment
@@ -163,7 +163,7 @@ type Server struct {
 
 另外一个是environment成员
 
-```
+``` golang
 type Environment struct {
 	ServiceDiscovery
     ...
@@ -180,7 +180,7 @@ type Environment struct {
 
 main函数位于`pilot/cmd/pilot-discovery/main.go`中
 
-```
+``` golang
 var (
     ...
 	discoveryCmd = &cobra.Command{
@@ -218,7 +218,7 @@ func main() {
 
 `pilot/pkg/bootstrap/server.go`
 
-```
+``` golang
 func NewServer(args *PilotArgs) (*Server, error) {
 	e := &model.Environment{
 		ServiceDiscovery: aggregate.NewController(),
@@ -234,7 +234,7 @@ func NewServer(args *PilotArgs) (*Server, error) {
 
 先创建Environment对象并将其存到Server中，执行时会在Environment内创建一个空的serviceregistry.aggregate.Controller，但还未向里面添加ServiceController实例，代码如下
 
-```
+``` golang
 // NewController creates a new Aggregate controller
 func NewController() *Controller {
 	return &Controller{
@@ -245,7 +245,7 @@ func NewController() *Controller {
 
 创建了Server对象后，会进行初始化，在`initControllers()`中
 
-```
+``` golang
 func NewServer(args *PilotArgs) (*Server, error) {
 	e := &model.Environment{
 		ServiceDiscovery: aggregate.NewController(),
@@ -275,7 +275,7 @@ func (s *Server) initControllers(args *PilotArgs) error {
 
 下面详细分析`initServiceControllers()`
 
-```
+``` golang
 func (s *Server) initServiceControllers(args *PilotArgs) error {
 	serviceControllers := s.ServiceController()
 	registered := make(map[serviceregistry.ProviderID]bool)
@@ -326,7 +326,7 @@ func (s *Server) initServiceControllers(args *PilotArgs) error {
 
 下面kubernetes为例再详细分析，来看`initKubeRegistry()`
 
-```
+``` golang
 func (s *Server) initKubeRegistry(serviceControllers *aggregate.Controller, args *PilotArgs) (err error) {
     ...
 	kubeRegistry := kubecontroller.NewController(s.kubeClient, s.metadataClient, args.Config.ControllerOptions)
@@ -354,7 +354,7 @@ func (c *Controller) AddRegistry(registry serviceregistry.Instance) {
 
 ### 注册回调函数 ###
 
-```
+``` golang
 func NewServer(args *PilotArgs) (*Server, error) {
 	e := &model.Environment{
 		ServiceDiscovery: aggregate.NewController(),
@@ -387,7 +387,7 @@ func NewServer(args *PilotArgs) (*Server, error) {
 注册回调函数的代码在`initRegistryEventHandlers()`
 
 
-```
+``` golang
 // initRegistryEventHandlers sets up event handlers for config and service updates
 func (s *Server) initRegistryEventHandlers() error {
 	// Flush cached discovery responses whenever services configuration change.
@@ -416,7 +416,7 @@ func (s *Server) initRegistryEventHandlers() error {
 
 这里使用`serviceregistry.aggregate.Controller.AppendServiceHandler()`注册了处理Service的回调函数。
 
-```
+``` golang
 // AppendServiceHandler implements a service catalog operation
 func (c *Controller) AppendServiceHandler(f func(*model.Service, model.Event)) error {
 	for _, r := range c.GetRegistries() {
@@ -435,7 +435,7 @@ func (c *Controller) AppendServiceHandler(f func(*model.Service, model.Event)) e
 
 比如上面的这个回调函数的内容
 
-```
+``` golang
 	serviceHandler := func(svc *model.Service, _ model.Event) {
 		pushReq := &model.PushRequest{
 			Full: true,

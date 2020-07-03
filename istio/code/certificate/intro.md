@@ -61,7 +61,7 @@ Istiod内部的CA Server用来提供证书签名服务。
 
   位于istio-system中，用来持久化保存自签名的ca私钥和ca证书，其它字段都为空，只由Istiod使用，与Pilot Agent没有关系
 
-  ```
+  ``` bash
   [root@master1 ~]# kubectl get secret istio-ca-secret -n istio-system -o yaml
   apiVersion: v1
   data:
@@ -85,7 +85,7 @@ Istiod内部的CA Server用来提供证书签名服务。
 
   每个namespace中都会有一个，用于保存根证书，会挂载到Pilot Agent的`/var/run/secrets/istio`目录
 
-  ```
+  ``` bash
   [root@master1 ~]# kubectl get cm istio-ca-root-cert -n istio-system -o yaml
   apiVersion: v1
   data:
@@ -129,7 +129,7 @@ SDS Server与Istiod内部的CA Server进行通信时，双方都需要有一个�
 
 下面来看一下注入的sidecar的模板文件
 
-```
+``` yaml
       "global": {
         ...
         "pilotCertProvider": "istiod",
@@ -173,7 +173,7 @@ SDS Server与Istiod内部的CA Server进行通信时，双方都需要有一个�
 
    下面来看一下注入的sidecar的模板文件
 
-   ```
+   ``` yaml
          "global": {
            ...
            "mountMtlsCerts": false,

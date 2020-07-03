@@ -8,7 +8,7 @@ description: >
 
 TODO
 
-```
+``` golang
 			envoyProxy := envoy.NewProxy(envoy.ProxyConfig{
 				Config:              proxyConfig,
 				Node:                role.ServiceNode(),
@@ -30,7 +30,7 @@ TODO
 ```
 
 
-```
+``` golang
 // NewProxy creates an instance of the proxy control commands
 func NewProxy(cfg ProxyConfig) Proxy {
 	// inject tracing flag for higher levels
@@ -49,7 +49,7 @@ func NewProxy(cfg ProxyConfig) Proxy {
 }
 ```
 
-```
+``` golang
 func (e *envoy) Run(config interface{}, epoch int, abort <-chan error) error {
 	var fname string
 	// Note: the cert checking still works, the generated file is updated if certs are changed.
@@ -114,7 +114,7 @@ func (e *envoy) Run(config interface{}, epoch int, abort <-chan error) error {
 
 envoy启动参数
 
-```
+``` golang
 2020-05-25T07:44:13.334932Z	info	Envoy command: [-c etc/istio/proxy/envoy-rev0.json --restart-epoch 0 --drain-time-s 45 --parent-shutdown-time-s 60 --service-cluster productpage.default --service-node sidecar~10.244.0.16~productpage-v1-85b9bf9cd7-kpr5h.default~default.svc.cluster.local --max-obj-name-len 189 --local-address-ip-version v4 --log-format %Y-%m-%dT%T.%fZ	%l	envoy %n	%v -l warning --component-log-level misc:error --concurrency 2]
 ```
 

@@ -24,7 +24,7 @@ Envoy除了作为sidecar之外，还可以作为ingress网关，用作整个集�
 
 这些具体的ConfigController有2个共同的父接口，被称为model.ConfigStore和model.ConfigSotreCache，其中ConfigStore可以认为是一个静态的接口，可以通过这个接口中的函数来对config对象进行增删改查，其中有一个`Schemas`字段，包含了所有的原始对象。ConfigStore的定义如下
 
-```
+``` golang
 type ConfigStore interface {
 	Schemas() collection.Schemas
 
@@ -39,7 +39,7 @@ type ConfigStore interface {
 
 而另一个对象ConfigSotreCache相对于ConfigStore而言，是一个动态的接口，定义如下
 
-```
+``` golang
 type ConfigStoreCache interface {
 	ConfigStore
 
@@ -53,7 +53,7 @@ type ConfigStoreCache interface {
 
 除了这两个Interface之外，还有一个名为IstioConfigStore的Interface，它主要用于获取外部服务的相关信息，我们不会对其进行详细分析，定义如下
 
-```
+``` golang
 type IstioConfigStore interface {
 	ConfigStore
 	ServiceEntries() []Config
@@ -68,7 +68,7 @@ type IstioConfigStore interface {
 
 其中第一个聚合对象叫store
 
-```
+``` golang
 type store struct {
 	schemas collection.Schemas
 	stores map[resource.GroupVersionKind][]model.ConfigStore
@@ -78,7 +78,7 @@ type store struct {
 
 一方面它内部包含有schemas字段，用来存储原始对象，还包含一个stores字段，这是一个map，用来分类存储各种ConfigStore对象。另一方面它继承了上文提到的model.ConfigStore接口，也就意味着当对这个store执行model.ConfigStore接口里的函数时，store会遍历自己内部存储的各种具体的ConfigController对象，分别对他们对应的操作，来看一个例子
 
-```
+``` golang
 // List all configs in the stores.
 func (cr *store) List(typ resource.GroupVersionKind, namespace string) ([]model.Config, error) {
     ...
@@ -104,7 +104,7 @@ func (cr *store) List(typ resource.GroupVersionKind, namespace string) ([]model.
 
 第二个聚合对象叫storeCache
 
-```
+``` golang
 type storeCache struct {
 	model.ConfigStore
 	caches []model.ConfigStoreCache
@@ -113,7 +113,7 @@ type storeCache struct {
 
 它有一个caches数组，里面包含了具体的各种ConfigController对象(因为它们都实现了ConfigStoreCache Interface)。另一方面storeCache实现了model.ConfigStoreCache Interface。当执行对这个storeCache对象执行model.ConfigStoreCache接口里的函数时，storeCache会遍历自己内部存储的各种具体的ConfigController对象，分别对他们对应的操作，下面是`RegisterEventHandler()`的实现
 
-```
+``` golang
 func (cr *storeCache) RegisterEventHandler(kind resource.GroupVersionKind, handler func(model.Config, model.Config, model.Event)) {
 	for _, cache := range cr.caches {
 		if _, exists := cache.Schemas().FindByGroupVersionKind(kind); exists {
@@ -131,7 +131,7 @@ func (cr *storeCache) RegisterEventHandler(kind resource.GroupVersionKind, handl
 
 Istio pilot discovery有一个总的Server对象
 
-```
+``` golang
 type Server struct {
     ...
 	environment *model.Environment
@@ -147,7 +147,7 @@ type Server struct {
 
 另外一个是environment成员
 
-```
+``` golang
 type Environment struct {
 	IstioConfigStore
     ...
@@ -160,7 +160,7 @@ type Environment struct {
 
 main函数位于`pilot/cmd/pilot-discovery/main.go`中
 
-```
+``` golang
 var (
     ...
 	discoveryCmd = &cobra.Command{
@@ -198,7 +198,7 @@ func main() {
 
 创建了Server对象后，会进行初始化，在`initControllers()`中
 
-```
+``` golang
 func NewServer(args *PilotArgs) (*Server, error) {
     ...
 	s := &Server{
@@ -224,7 +224,7 @@ func (s *Server) initControllers(args *PilotArgs) error {
 
 下面详细分析`initConfigController()`
 
-```
+``` golang
 func (s *Server) initConfigController(args *PilotArgs) error {
 	meshConfig := s.environment.Mesh()
 	if len(meshConfig.ConfigSources) > 0 {
@@ -246,7 +246,7 @@ func (s *Server) initConfigController(args *PilotArgs) error {
 
 这个函数首先用根据配置来创建不同的ConfigController：MCP Controller(如果符合这个条件，则创建后会立即返回)、Memery Controller和Kubernetes Controller。然后controller加到Server.ConfigStores中
 
-```
+``` golang
 	if hasKubeRegistry(args.Service.Registries) && meshConfig.IngressControllerMode != meshconfig.MeshConfig_OFF {
 		s.ConfigStores = append(s.ConfigStores,
 			ingress.NewController(s.kubeClient, meshConfig, args.Config.ControllerOptions))
@@ -256,7 +256,7 @@ func (s *Server) initConfigController(args *PilotArgs) error {
 
 接下来如果启用了ingress模式，则会将Ingress Controller也加入Server.ConfigStores中。
 
-```
+``` golang
 	aggregateConfigController, err := configaggregate.MakeCache(s.ConfigStores)
 	if err != nil {
 		return err
@@ -282,7 +282,7 @@ func (s *Server) initConfigController(args *PilotArgs) error {
 
 ### 注册回调函数 ###
 
-```
+``` golang
 func NewServer(args *PilotArgs) (*Server, error) {
 	e := &model.Environment{
 		ServiceDiscovery: aggregate.NewController(),
@@ -314,7 +314,7 @@ func NewServer(args *PilotArgs) (*Server, error) {
 
 注册回调函数的代码在`initRegistryEventHandlers()`
 
-```
+``` golang
 // initRegistryEventHandlers sets up event handlers for config and service updates
 func (s *Server) initRegistryEventHandlers() error {
     ...
@@ -347,7 +347,7 @@ func (s *Server) initRegistryEventHandlers() error {
 
 这里使用`config.aggregate.storeCache.RegisterEventHandler()`注册了处理Config的回调函数。
 
-```
+``` golang
 func (cr *storeCache) RegisterEventHandler(kind resource.GroupVersionKind, handler func(model.Config, model.Config, model.Event)) {
 	for _, cache := range cr.caches {
 		if _, exists := cache.Schemas().FindByGroupVersionKind(kind); exists {

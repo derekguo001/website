@@ -18,7 +18,7 @@ SDS Server和CA Server之间进行通信时的接口名为`IstioCertificateServi
 
 现在回头看`pkg.server.ca.Server`
 
-```
+``` golang
 type Server struct {
     ...
 	Authenticators []authenticator
@@ -35,16 +35,16 @@ type Server struct {
 
   `authenticator`是一个Interface类型，代码中包含了四种实现
 
-  |认证类型|说明|
-  |--|--|
-  |ClientCertAuthenticator    |客户端证书认证|
-  |IDTokenAuthenticator       |通过OpenID Connect (OIDC) 对客户端请求中的`Bearer`值进行认证，用于google公有云|
-  |KubeJWTAuthenticator       |通过kubeclient向Kubernetes API Server发起验证请求，验证请求中的JWT Token|
-  |jwtAuthenticator           |通过OpenID Connect (OIDC) 向Kubernetes API Server验证请求中的JWT Token，主要用于Istiod部署于Kubernetes集群之外的场景|
+|认证类型|说明|
+|--|--|
+|ClientCertAuthenticator    |客户端证书认证|
+|IDTokenAuthenticator       |通过OpenID Connect (OIDC) 对客户端请求中的`Bearer`值进行认证，用于google公有云|
+|KubeJWTAuthenticator       |通过kubeclient向Kubernetes API Server发起验证请求，验证请求中的JWT Token|
+|jwtAuthenticator           |通过OpenID Connect (OIDC) 向Kubernetes API Server验证请求中的JWT Token，主要用于Istiod部署于Kubernetes集群之外的场景|
 
   `authenticator`定义如下
 
-  ```
+  ``` golang
   type authenticator interface {
       Authenticate(ctx context.Context) (*authenticate.Caller, error)
       AuthenticatorType() string
@@ -57,7 +57,7 @@ type Server struct {
 
   `ca`字段的类型为`CertificateAuthority`
 
-  ```
+  ``` golang
   // CertificateAuthority contains methods to be supported by a CA.
   type CertificateAuthority interface {
       // Sign generates a certificate for a workload or CA, from the given CSR and TTL.
@@ -78,7 +78,7 @@ type Server struct {
 
 一个名为`IstioCA`结构实现了`CertificateAuthority`接口，因此在`pkg.server.ca.Server`结构中的`ca`字段实际上就是一个`IstioCA`结构。
 
-```
+``` golang
 // IstioCA generates keys and certificates for Istio identities.
 type IstioCA struct {
     ...
@@ -95,7 +95,7 @@ type IstioCA struct {
 
 另外，在签名关于Pilot Agent代码分析的文章中提到了Pilot Agent中核心对象是`pilot.pkg.bootstrap.Server`，它内部也有一个`ca`对象
 
-```
+``` golang
 type Server struct {
     ...
 	ca               *ca.IstioCA

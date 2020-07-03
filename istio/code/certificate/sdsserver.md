@@ -17,7 +17,7 @@ Pilot Agent启动时，会创建一个SDSAgent的对象，然后执行它的`Sta
 
 SDS Server与Envoy通过SDS API进行交互时的需要实现的接口为`SecretDiscoveryServiceServer`，SDS Server实现其中的`StreamSecrets()`和`FetchSecrets()`，这两个函数接受请求，然后进行处理，最后将证书发送给Envoy。在Pilot Agent中实现这个接口的数据结构为`nodeagent.sds.sdsservice`，由于Envoy在Istio中可以扮演两个角色：第一个是作为普通pod的sidecar，第二个作为ingress gateway或者egress gateway，这两种情况下处理流程是不同的，因此在实现SDS Server的时候分别进行了实现，对应的名称为`workloadSds`和`gatewaySds`，它们都作为了`nodeagent.sds.Server`的成员变量，而`nodeagent.sds.Server`就是真正的SDS Server。
 
-```
+``` golang
 type Server struct {
 	workloadSds *sdsservice
 	gatewaySds  *sdsservice
@@ -27,7 +27,7 @@ type Server struct {
 
 为了将证书在本地进行缓存，引入了一个`SecretManager` interface。例如其中的`GenerateSecret()`会生成所有证书并将其缓存。
 
-```
+``` golang
 type SecretManager interface {
 	GenerateSecret(ctx context.Context, connectionID, resourceName, token string) (*model.SecretItem, error)
 	SecretExist(connectionID, resourceName, token, version string) bool
@@ -38,7 +38,7 @@ type SecretManager interface {
 
 `SecretManager` interface本身会作为刚才提到的sdsservice对象一个成员，通过这种方式与SDS Server关联起来。
 
-```
+``` golang
 type sdsservice struct {
 	st cache.SecretManager
     ...
@@ -49,7 +49,7 @@ type sdsservice struct {
 
 `SecretCache`的struct内包含了一个名为`fetcher`的成员，它的类型是`*secretfetcher.SecretFetcher`，`SecretCache`就是通过`fetcher`来与Istiod进行证书签名等操作的。
 
-```
+``` golang
 type SecretCache struct {
 	fetcher        *secretfetcher.SecretFetcher
     ...
@@ -58,7 +58,7 @@ type SecretCache struct {
 
 实际上，除了Istiod之外，还可以集成第三方的CA服务，比如google。因此对进行与CA服务交互的client也做了一层抽象，interface名为`Client`，与CA服务进行交互的函数为`CSRign()`。
 
-```
+``` golang
 type Client interface {
 	CSRSign(ctx context.Context, reqID string, csrPEM []byte, subjectID string,
 		certValidTTLInSec int64) ([]string /*PEM-encoded certificate chain*/, error)
@@ -67,7 +67,7 @@ type Client interface {
 
 用户可以通过实现这个函数来继承`Client`这个interface。在Istio的代码中包含了几个对应的实现，包括名为`googleCAClient`的client用来与google CA服务交互，也包含了名称为`citadelClient`的client与Istiod内置的CA服务进行交互。这些client作为上文提到的`secretfetcher.SecretFetcher`的成员，SecretFetcher在进行证书签名的时候，会调用这些client。
 
-```
+``` golang
 type SecretFetcher struct {
     ...
 	CaClient    caClientInterface.Client
@@ -77,7 +77,7 @@ type SecretFetcher struct {
 
 除了通过SDS Server接受Envoy请求，然后向Istiod发送请求进行签名之外，还有另外一种情况，即证书发生变化后主动向Envoy推送配置，因此在SecretCache结构中包含了一个回调函数的成员`notifyCallback`。
 
-```
+``` golang
 type SecretCache struct {
     ...
 	fetcher        *secretfetcher.SecretFetcher
@@ -96,7 +96,7 @@ type SecretCache struct {
 
 在启动Pilot Agent的过程中，首先会创建SDSAgent对象，并执行它的`Start()`
 
-```
+``` golang
 	proxyCmd = &cobra.Command{
 		Use:   "proxy",
 		Short: "Envoy proxy agent",
@@ -122,7 +122,7 @@ type SecretCache struct {
 
 其中的`NewSDSAgent()`主要是做了一些变量初始化工作，主要的对象创建都在`Start()`中，代码如下
 
-```
+``` golang
 func (sa *SDSAgent) Start(isSidecar bool, podNamespace string) (*sds.Server, error) {
     ...
 	workloadSecretCache, _ := sa.newSecretCache(serverOptions)
@@ -141,7 +141,7 @@ func (sa *SDSAgent) Start(isSidecar bool, podNamespace string) (*sds.Server, err
 
 在`newSecretCache()`中实现
 
-```
+``` golang
 // newSecretCache creates the cache for workload secrets and/or gateway secrets.
 func (sa *SDSAgent) newSecretCache(serverOptions sds.Options) (workloadSecretCache *cache.SecretCache, caClient caClientInterface.Client) {
 	ret := &secretfetcher.SecretFetcher{}
@@ -156,7 +156,7 @@ func (sa *SDSAgent) newSecretCache(serverOptions sds.Options) (workloadSecretCac
 
 首先，根据配置判断CA的类型，如果为GoogleCA，则使用google的CA服务，会创建对应的Client。
 
-```
+``` golang
 	// TODO: this should all be packaged in a plugin, possibly with optional compilation.
 	log.Infof("serverOptions.CAEndpoint == %v", serverOptions.CAEndpoint)
 	if (serverOptions.CAProviderName == "GoogleCA" || strings.Contains(serverOptions.CAEndpoint, "googleapis.com")) &&
@@ -171,7 +171,7 @@ func (sa *SDSAgent) newSecretCache(serverOptions sds.Options) (workloadSecretCac
 
 否则的话，使用默认的CA，即Istiod中实现的CA Server，接下来判断是否配置了serverOptions.CAEndpoint，如果没有配置，则使用默认的配置，具体代码不在这里展开。
 
-```
+``` golang
 		// Determine the default CA.
 		// If /etc/certs exists - it means Citadel is used (possibly in a mode to only provision the root-cert, not keys)
 		// Otherwise: default to istiod
@@ -189,7 +189,7 @@ func (sa *SDSAgent) newSecretCache(serverOptions sds.Options) (workloadSecretCac
 
 在默认安装Istio的情况下会对serverOptions.CAEndpoint参数(环境变量`CA_ADDR`)配置为`istiod.istio-system.svc:15012`，同时会启用双向TLS认证，下面是sidecar的配置
 
-```
+``` yaml
     - args:
         - proxy
         - sidecar
@@ -205,7 +205,7 @@ func (sa *SDSAgent) newSecretCache(serverOptions sds.Options) (workloadSecretCac
 
 代码会执行下面的逻辑
 
-```
+``` golang
 			// Explicitly configured CA
 			log.Infoa("Using user-configured CA ", serverOptions.CAEndpoint)
 			if strings.HasSuffix(serverOptions.CAEndpoint, ":15010") {
@@ -245,14 +245,14 @@ func (sa *SDSAgent) newSecretCache(serverOptions sds.Options) (workloadSecretCac
 
 上面这段代码会根据serverOptions.PilotCertProvider进一步判断根证书是由谁提供的，这个参数是由环境变量来配置的，在默认安装的情况下会使用指定的默认值"istiod"，详细可参考概述中SDS Server控制面证书一节的内容。
 
-```
+``` golang
 	pilotCertProvider = env.RegisterStringVar("PILOT_CERT_PROVIDER", "istiod",
 		"the provider of Pilot DNS certificate.").Get()
 ```
 
 因此在默认使用`istiod`类型的情况下，上面的代码会从`./var/run/secrets/istio/root-cert.pem`中读取根证书内容，将其存入sa.RootCert字段中，然后创建caClient对象，并将其存入SecretFetcher的CaClient字段，代码如下
 
-```
+``` golang
 		sa.RootCert = rootCert
 		// Will use TLS unless the reserved 15010 port is used ( istiod on an ipsec/secure VPC)
 		// rootCert may be nil - in which case the system roots are used, and the CA is expected to have public key
@@ -266,7 +266,7 @@ func (sa *SDSAgent) newSecretCache(serverOptions sds.Options) (workloadSecretCac
 
 最后，会创建SecretCache对象，然后将其存入SDSAgent.WorkloadSecrets中。
 
-```
+``` golang
 	if err != nil {
 		log.Errorf("failed to create secretFetcher for workload proxy: %v", err)
 		os.Exit(1)
@@ -287,7 +287,7 @@ func (sa *SDSAgent) newSecretCache(serverOptions sds.Options) (workloadSecretCac
 
 上面的流程是在SDSAgent.Start()中完成了SecretCache对象的创建
 
-```
+``` golang
 func (sa *SDSAgent) Start(isSidecar bool, podNamespace string) (*sds.Server, error) {
     ...
 	workloadSecretCache, _ := sa.newSecretCache(serverOptions)
@@ -302,7 +302,7 @@ func (sa *SDSAgent) Start(isSidecar bool, podNamespace string) (*sds.Server, err
 
 ### SDS Server ###
 
-```
+``` golang
 func NewServer(options Options, workloadSecretCache, gatewaySecretCache cache.SecretManager) (*Server, error) {
 	s := &Server{
 		workloadSds: newSDSService(workloadSecretCache, false, options.UseLocalJWT,
@@ -339,7 +339,7 @@ func NewServer(options Options, workloadSecretCache, gatewaySecretCache cache.Se
 
 在第一部分中描述了sdsservice实现了`SecretDiscoveryServiceServer`接口，主要是`StreamSecrets()`和`FetchSecrets()`这两个函数(只是使用方式不同，这两个函数的主体逻辑是一样的，这里只分析第一个函数)，用来接收envoy的证书请求，接下来分析具体的实现，代码位于`security/pkg/nodeagent/sds/sdsservice.go`
 
-```
+``` golang
 // StreamSecrets serves SDS discovery requests and SDS push requests
 func (s *sdsservice) StreamSecrets(stream sds.SecretDiscoveryService_StreamSecretsServer) error {
     ...
@@ -370,7 +370,7 @@ func (s *sdsservice) StreamSecrets(stream sds.SecretDiscoveryService_StreamSecre
 
 这是这个函数整体的框架，收到请求后`go receiveThread()`会把请求的对象发送到`reqChannel`中，然后在接下来的代码中统一处理
 
-```
+``` golang
 	var node *core.Node
 	for {
 		// Block until a request is received.
@@ -390,7 +390,7 @@ func (s *sdsservice) StreamSecrets(stream sds.SecretDiscoveryService_StreamSecre
 
 先来看第一种，在第一次接受到Envoy的请求后，会进行一些初始化工作，将当前的连接加入到一个全局的map结构中
 
-```
+``` golang
 			if con.conID == "" {
 				// first request
 				if discReq.Node == nil || len(discReq.Node.Id) == 0 {
@@ -412,7 +412,7 @@ func (s *sdsservice) StreamSecrets(stream sds.SecretDiscoveryService_StreamSecre
 ```
 
 
-```
+``` golang
 func addConn(k cache.ConnKey, conn *sdsConnection) {
 	sdsClientsMutex.Lock()
 	defer sdsClientsMutex.Unlock()
@@ -424,7 +424,7 @@ func addConn(k cache.ConnKey, conn *sdsConnection) {
 
 接下来会读取ServiceAccount Token，下面代码中的`s.jwtPath`会被初始化为`/var/run/secrets/kubernetes.io/serviceaccount/token`
 
-```
+``` golang
 			if s.localJWT {
 				// Running in-process, no need to pass the token from envoy to agent as in-context - use the file
 				tok, err := ioutil.ReadFile(s.jwtPath)
@@ -449,7 +449,7 @@ func addConn(k cache.ConnKey, conn *sdsConnection) {
 
 然后使用`GenerateSecret()`生成证书，并用`pushSDS()`将证书返回给Envoy。
 
-```
+``` golang
 			secret, err := s.st.GenerateSecret(ctx, conID, resourceName, token)
             ...
 			if err := pushSDS(con); err != nil {
@@ -461,7 +461,7 @@ func addConn(k cache.ConnKey, conn *sdsConnection) {
 
 生成证书的核心逻辑在`GenerateSecret()`中
 
-```
+``` golang
 func (sc *SecretCache) GenerateSecret(ctx context.Context, connectionID, resourceName, token string) (*model.SecretItem, error) {
     ...
 	// First try to generate secret from file.
@@ -503,7 +503,7 @@ func (sc *SecretCache) GenerateSecret(ctx context.Context, connectionID, resourc
 
 从第2、3种情况中可以看出，代码核心逻辑在`generateSecret()`中，下面来详细分析这个函数
 
-```
+``` golang
 func (sc *SecretCache) generateSecret(ctx context.Context, token string, connKey ConnKey, t time.Time) (*model.SecretItem, error) {
     ...
 	exchangedToken, err := sc.getExchangedToken(ctx, token, connKey)
@@ -511,7 +511,7 @@ func (sc *SecretCache) generateSecret(ctx context.Context, token string, connKey
 
 可以看出，首先使用token等信息生成一个exchange token
 
-```
+``` golang
     ...
 	options := pkiutil.CertOptions{
 		Host:       csrHostName,
@@ -526,13 +526,13 @@ func (sc *SecretCache) generateSecret(ctx context.Context, token string, connKey
 
 然后使用`GenCSR()`生成私钥和证书签名请求文件。
 
-```
+``` golang
 	certChainPEM, err := sc.sendRetriableRequest(ctx, csrPEM, exchangedToken, connKey, true)
 ```
 
 接着使用exchange token和私钥、证书签名请求文件等信息向Istiod中的CA Server发起证书签名请求。返回结果是签名后的证书。
 
-```
+``` golang
 	certChain := []byte{}
 	for _, c := range certChainPEM {
 		certChain = append(certChain, []byte(c)...)
@@ -560,7 +560,7 @@ func (sc *SecretCache) generateSecret(ctx context.Context, token string, connKey
 
 这一段代码的含义是从签名后的证书中获取根证书，并和本地保存的根证书进行比较，如果结果不同或者本地没有根证书(发生在服务第一次的时候)，则使用新的根证书重设本地的根证书，并且当根证书发生改变之后，会通过`rotate()`轮换证书，即向客户端主动推送根证书。
 
-```
+``` golang
 	return &model.SecretItem{
 		CertificateChain: certChain,
 		PrivateKey:       keyPEM,
@@ -581,7 +581,7 @@ func (sc *SecretCache) generateSecret(ctx context.Context, token string, connKey
 
 我们现在回到`StreamSecrets()`中，上一节讲述了相应客户端请求的情况，本节详细分析一下主动推送的情况
 
-```
+``` golang
 	var node *core.Node
 	for {
 		// Block until a request is received.
@@ -619,7 +619,7 @@ func (sc *SecretCache) generateSecret(ctx context.Context, token string, connKey
 
 我们首先看一下回调函数的注册，在创建`SecretCache`对象的时候
 
-```
+``` golang
 func (sa *SDSAgent) newSecretCache(serverOptions sds.Options) (workloadSecretCache *cache.SecretCache, caClient caClientInterface.Client) {
     ...
 	workloadSecretCache = cache.NewSecretCache(ret, sds.NotifyProxy, workloadSdsCacheOptions)
@@ -630,7 +630,7 @@ func (sa *SDSAgent) newSecretCache(serverOptions sds.Options) (workloadSecretCac
 
 注意`NewSecretCache()`的第二个参数其实就是回调函数
 
-```
+``` golang
 func NotifyProxy(connKey cache.ConnKey, secret *model.SecretItem) error {
 	conIDresourceNamePrefix := sdsLogPrefix(connKey.ResourceName)
 
@@ -654,7 +654,7 @@ func NotifyProxy(connKey cache.ConnKey, secret *model.SecretItem) error {
 
 通过跟踪`SecretCache.notifyCallback`这个成员变量，发现它只使用在了一个地方
 
-```
+``` golang
 func (sc *SecretCache) callbackWithTimeout(connKey ConnKey, secret *model.SecretItem) {
 	go func() {
         ...
@@ -675,7 +675,7 @@ func (sc *SecretCache) callbackWithTimeout(connKey ConnKey, secret *model.Secret
 
 上一节分析SDS Server相应客户端请求的时候提到了如果发现有用户手动插入的证书，会优先使用，相关代码在`generateFileSecret()`中
 
-```
+``` golang
 func (sc *SecretCache) generateFileSecret(connKey ConnKey, token string) (bool, *model.SecretItem, error) {
     ...
 	switch {
@@ -714,7 +714,7 @@ func (sc *SecretCache) generateFileSecret(connKey ConnKey, token string) (bool, 
 
 可以看到这个函数里面有很多`addFileWatcher()`的调用
 
-```
+``` golang
 func (sc *SecretCache) addFileWatcher(file string, token string, connKey ConnKey) {
     ...
 	go func() {
@@ -753,7 +753,7 @@ func (sc *SecretCache) addFileWatcher(file string, token string, connKey ConnKey
 
 另一种情况是在证书轮换的时候，在上一节中分析到generateSecret()内部生成证书的之后，会检测新的根证书和本地缓存的证书是否一致，不一致的情况下会执行证书轮换工作
 
-```
+``` golang
 func (sc *SecretCache) generateSecret(ctx context.Context, token string, connKey ConnKey, t time.Time) (*model.SecretItem, error) {
     ...
 	if rootCertChanged {
@@ -775,7 +775,7 @@ func (sc *SecretCache) generateSecret(ctx context.Context, token string, connKey
 
 在`rotate()`中
 
-```
+``` golang
 func (sc *SecretCache) rotate(updateRootFlag bool) {
     ...
 	sc.secrets.Range(func(k interface{}, v interface{}) bool {

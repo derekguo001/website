@@ -18,7 +18,7 @@ Pilot Agent主要作用是在内部启动一个envoy进程。
 
   即Pilot Agent的主进程
 
-  ```
+  ``` golang
   type agent struct {
       proxy Proxy
       activeEpochs map[int]chan error
@@ -52,7 +52,7 @@ Pilot Agent主要作用是在内部启动一个envoy进程。
 
 入口在`pilot/cmd/pilot-agent/main.go`中，
 
-```
+``` golang
 	proxyCmd = &cobra.Command{
 		Use:   "proxy",
 		Short: "Envoy proxy agent",
@@ -65,7 +65,7 @@ Pilot Agent主要作用是在内部启动一个envoy进程。
 
 2. 接着会创建SDS Agent对象，并将其Run起来
 
-   ```
+   ``` golang
 			sa := istio_agent.NewSDSAgent(proxyConfig.DiscoveryAddress, proxyConfig.ControlPlaneAuthPolicy == meshconfig.AuthenticationPolicy_MUTUAL_TLS,
             ...
 			_, err = sa.Start(role.Type == model.SidecarProxy, podNamespaceVar.Get())
@@ -76,7 +76,7 @@ Pilot Agent主要作用是在内部启动一个envoy进程。
 
 3. 然后根据配置，如果有证书文件需要watch，先等待他们ready
 
-    ```
+    ``` golang
 			// dedupe cert paths so we don't set up 2 watchers for the same file
 			tlsCerts := dedupeStrings(getTLSCerts(proxyConfig))
 
@@ -92,7 +92,7 @@ Pilot Agent主要作用是在内部启动一个envoy进程。
 
 4. 创建proxy对象和agent对象
 
-   ```
+   ``` golang
 			envoyProxy := envoy.NewProxy(envoy.ProxyConfig{
 				Config:              proxyConfig,
 				Node:                role.ServiceNode(),
@@ -117,7 +117,7 @@ Pilot Agent主要作用是在内部启动一个envoy进程。
 
 5. 创建watcher并Run，这里将agent.Restart作为回调函数注册到了watcher对象里。
 
-   ```
+   ``` golang
 			// Watcher is also kicking envoy start.
 			watcher := envoy.NewWatcher(tlsCerts, agent.Restart)
 			go watcher.Run(ctx)
@@ -125,7 +125,7 @@ Pilot Agent主要作用是在内部启动一个envoy进程。
 
 6. 最后，启动agent。
 
-   ```
+   ``` golang
 			return agent.Run(ctx)
    ```
 
@@ -133,7 +133,7 @@ Pilot Agent主要作用是在内部启动一个envoy进程。
 
 先来看agent.Run()
 
-```
+``` golang
 func (a *agent) Run(ctx context.Context) error {
 	log.Info("Starting proxy agent")
 	for {
@@ -172,7 +172,7 @@ agent运行之后会监听agent.statusCh，在之前提到过，每当envoy进�
 
 可以看出envoy进程并不是由agent.Run()启动的，它的启动实际上是由wather来触发的。下面是watcher的结构
 
-```
+``` golang
 type watcher struct {
 	certs   []string
 	updates func(interface{})
@@ -181,7 +181,7 @@ type watcher struct {
 
 watcher的结构非常简单，包含证书名称的一个数组和一个回调函数，下面详细看watcher对象的创建和运行过程。
 
-```
+``` golang
 			// Watcher is also kicking envoy start.
 			watcher := envoy.NewWatcher(tlsCerts, agent.Restart)
 			go watcher.Run(ctx)
@@ -189,7 +189,7 @@ watcher的结构非常简单，包含证书名称的一个数组和一个回调�
 
 在创建时将`agent.Restart`作为回调函数存储在`updates`字段中。
 
-```
+``` golang
 func (w *watcher) Run(ctx context.Context) {
 	// kick start the proxy with partial state (in case there are no notifications coming)
 	w.SendConfig()
@@ -206,7 +206,7 @@ watcher运行后会首先调用一次`SendConfig()`，然后又把`SendConfig()`
 
 下面看`SendConfig()`
 
-```
+``` golang
 func (w *watcher) SendConfig() {
 	h := sha256.New()
 	generateCertHash(h, w.certs)
@@ -216,7 +216,7 @@ func (w *watcher) SendConfig() {
 
 它会计算证书的sha256的值，然后将其作为参数调用`watcher.updates()`，也就是调用前文提到的已经注册的回调函数`agent.Restart()`
 
-```
+``` golang
 func (a *agent) Restart(config interface{}) {
 	// Only allow one restart to execute at a time.
 	a.restartMutex.Lock()
@@ -259,7 +259,7 @@ func (a *agent) Restart(config interface{}) {
 
 `agent.Restart()`为启动envoy作一些准备工作，它会将watcher传回的证书文件的sha256的值存储到agent.currentConfig中，然后将epoch+1，将新的epoch和对应的channel注册到agent.activeEpochs中，然后再使用这两个值加上证书的sha256的值，这三个作为参数调用agent.runWait()来启动envoy。
 
-```
+``` golang
 // runWait runs the start-up command as a go routine and waits for it to finish
 func (a *agent) runWait(config interface{}, epoch int, abortCh <-chan error) {
 	log.Infof("Epoch %d starting", epoch)
