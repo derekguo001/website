@@ -6,13 +6,13 @@ date: 2017-01-04
 description: >
 ---
 
-## 一、数据结构 ##
+## 一、对象模型 ##
 
 {{< figure src="../discoveryserver_data_1.png" link="../discoveryserver_data_1.png" target="_blank" >}}
 
 本节主要关注pilot discovery与envoy交互部分。
 
-### DiscoveryServer相关的数据结构 ###
+### DiscoveryServer相关的对象模型 ###
 
 pilot discovery的服务器server对象包含一个名为DiscoveryServer组件，存储这个对象的字段名为EnvoyXdsServer，见下面的定义
 
@@ -39,7 +39,7 @@ type Server struct {
 
    这个接口定义了当server发现配置信息(包括kube svc、istio crd等)修改了之后主动向envoy proxy推送消息的功能
 
-### 与Envoy proxy交互时涉及到的数据结构 ###
+### 与Envoy proxy交互时涉及到的对象模型 ###
 
 这些对象按照范围可以分成两类：全局的对象、属于某个envoy proxy的局部对象
 

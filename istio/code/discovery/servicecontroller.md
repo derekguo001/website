@@ -8,9 +8,9 @@ description: >
 
 {{< figure src="../servicecontroller_data_1.png" link="../servicecontroller_data_1.png" target="_blank" >}}
 
-## 一、模型定义 ##
+## 一、对象模型 ##
 
-### 抽象模型定义 ###
+### 对象模型的定义 ###
 
 pilot discovery内部维护了一套自己的数据结构，外部的对象被同步到pilot discovery内部后会转换成内部的数据结构，当外部的对象更新后，也会自动更新内部的这些对象。当需要向envoy推送配置的时候，会从内部的这些对象转化成envoy格式的配置。
 
@@ -64,7 +64,7 @@ type ServiceInstance struct {
 
    这些抽象模型的定义位于`pilot/pkg/model`中。
 
-### 抽象模型的实例化 ###
+### 对象模型的实例化 ###
 
 在第一部分定义的两个Interface(Controller和ServiceDiscovery)的基础上，pilot discovery需要将这些东西实例化，要落实到某种具体的对象上，比如kubernetes。这些实例化的对象被称为serviceregistry，代码位于`pilot/pkg/serviceregistry`。
 

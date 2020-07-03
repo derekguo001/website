@@ -8,9 +8,9 @@ description: >
 
 {{< figure src="../configcontroller_data_1.png" link="../configcontroller_data_1.png" target="_blank" >}}
 
-## 一、模型定义 ##
+## 一、对象模型 ##
 
-### 具体实现 ###
+### 具体的对象模型 ###
 
 Istio中有一些新定义的对象模型，例如VirtualService、DestinationRule等等，它们在kubernetes中作为crd对象存在，它们在Istio中被统称为config，为了管理这些crd对象，Istio内部定义一些controller，被称为ConfigController，除了管理crd对象外，还有一些管理其它对象的ConfigController。具体而言，管理crd对象的ConfigController被称为crd ConfigController，或者简称为crd controller，代码位于`pilot/pkg/config/kube/crd`
 
@@ -20,7 +20,7 @@ Envoy除了作为sidecar之外，还可以作为ingress网关，用作整个集�
 
 上面提到的crd controller和ingress controller直接与kubernetes交互，为了解耦Istio与Kubernetes，又开发了一个新的抽象层，被称为mcp controller。代码位于`pilot/pkg/serviceregistry/mcp`，注意它与上面的几个controller都不在同一个目录下，这是因为mcp controller不仅实现了ConfigController的功能，同时也实现了ServiceController的功能，详见上一节的内容。
 
-### 抽象父接口 ###
+### 具体对象模型的抽象父接口 ###
 
 这些具体的ConfigController有2个共同的父接口，被称为model.ConfigStore和model.ConfigSotreCache，其中ConfigStore可以认为是一个静态的接口，可以通过这个接口中的函数来对config对象进行增删改查，其中有一个`Schemas`字段，包含了所有的原始对象。ConfigStore的定义如下
 
