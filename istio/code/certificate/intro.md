@@ -10,7 +10,7 @@ description: >
 
 本章描述在Istio中进行证书管理的主要组件和流程。
 
-在阅读本文的同时先参考以下一些非常优秀的文章，都来自于赵化冰的博客
+在阅读本文的同时可以参考以下一些非常优秀的文章，都来自于赵化冰的博客
 - [数字证书原理](https://zhaohuabing.com/post/2020-03-19-pki/)
 - [一文带你彻底厘清 Kubernetes 中的证书工作机制](https://zhaohuabing.com/post/2020-05-19-k8s-certificate/)
 - [一文带你彻底厘清 Isito 中的证书工作机制](https://zhaohuabing.com/post/2020-05-25-istio-certificate/)
@@ -31,7 +31,7 @@ description: >
 4. SDS Server将私钥和从CA Server处获得的证书一起通过SDS API发送给Envoy
 5. 以上过程会周期性地重复执行以便实现证书的轮换
 
-## CA Server ##
+## CA Server
 
 Istiod内部的CA Server用来提供证书签名服务。
 
@@ -55,7 +55,7 @@ Istiod内部的CA Server用来提供证书签名服务。
 
 有2个函数可以用来处理Pilot Agent发送过来的CSR请求。`CreateCertificate()`和`HandleCSR()`，其中第二个被标记为过时的。
 
-## 相关的Kubernetes资源 ##
+CA Server中涉及到了很多相关的Kubernetes资源，现整理如下
 
 - istio-ca-secret secret
 
@@ -117,9 +117,7 @@ Istiod内部的CA Server用来提供证书签名服务。
 
 ## SDS Server ##
 
-### 控制面证书 ###
-
-SDS Server与Istiod内部的CA Server进行通信时，双方都需要有一个根证书，用来验证对方的身份，根据配置的不同，这个根证书有几种不同的获取方式，对应的类型名称为分别为`istiod`、`kubernetes`和`custom`
+Pilot Agent中的SDS Server与Istiod内部的CA Server进行通信时，双方都需要有一个根证书，根据配置的不同，这个根证书有几种不同的获取方式，对应的类型名称为分别为`istiod`、`kubernetes`和`custom`
 
 |配置的类型名称|说明|备注|
 |--|--|--|
@@ -140,8 +138,6 @@ SDS Server与Istiod内部的CA Server进行通信时，双方都需要有一个�
     template: |
         ...
         env:
-        - name: JWT_POLICY
-          value: {{ .Values.global.jwtPolicy }}
         - name: PILOT_CERT_PROVIDER
           value: {{ .Values.global.pilotCertProvider }}
         ...
@@ -163,7 +159,8 @@ SDS Server与Istiod内部的CA Server进行通信时，双方都需要有一个�
 
 可以看出在部署的时候是通过`pilotCertProvider`这个参数来控制的，默认值是`istiod`，在模板文件中会将这个参数的值设置到环境变量`PILOT_CERT_PROVIDER`中。当这个值是`istiod`的情况下，会将`istio-ca-root-cert`这个configmap挂载到`/var/run/secrets/istio`目录中。
 
-### 数据面证书 ###
+
+## 数据面证书 ##
 
 数据面证书是指Envoy与Envoy通信时需要的证书，这些证书是Envoy通过向Pilot Agent中的SDS Server发起SDS请求获取的，而SDS Server内部获取这些证书的方式其实有两种：
 
@@ -207,3 +204,228 @@ SDS Server与Istiod内部的CA Server进行通信时，双方都需要有一个�
    ```
 
    如果是这种手动插入证书的方式，则SDS Server会将用户配置的证书直接返回给Envoy，而不是像前一种情况那样本地生成私钥和证书签名请求然后向CA Server申请签名。
+
+## 控制面认证 ##
+
+Istiod中的CA Server和Pilot Agent中的SDS Server通信时，需要互相认证对方的身份。
+
+SDS Server对CA Server认证的方式是标准的TLS认证，即CA Server启动时会配置相应的证书，在交互前进行认证时，会将证书发送给SDS Server，后者对其进行验证。
+
+CA Server对SDS Server的认证有不止一种方式
+
+|认证类型|说明|
+|--|--|
+|ClientCertAuthenticator    |客户端证书认证|
+|IDTokenAuthenticator       |通过OpenID Connect (OIDC) 对客户端请求中的`Bearer`中的JWT Token进行认证，用于google公有云|
+|KubeJWTAuthenticator       |通过kubeclient向Kubernetes API Server发起验证请求，验证请求中的JWT Token|
+|jwtAuthenticator           |通过OpenID Connect (OIDC) 向Kubernetes API Server验证请求中的JWT Token，主要用于Istiod部署于Kubernetes集群之外的场景|
+
+第一种方式使用客户端证书认证进行认证，实际上这时并不会进行真正的认证，只是在当前已经通过证书认证的前提下，从证书中提取出一些对象来供后续使用。
+
+另外需要注意的是这些认证方式如果启用多个的话，只要其中有一个认证通过，就会被认为是总体认证通过。
+
+## JWT Token文件 ##
+
+在CA Server和SDS Server之间进行控制面认证时，会使用一个ServiceAccount Token，Kubernetes支持两种类型
+
+- first-party-jwt
+
+  这是默认的情况，没有过期时间，ServiceAccount的jwt token文件挂载到每个pod中。这种情况有一些安全风险。可参见 [部署服务账户令牌卷投影](https://www.alibabacloud.com/help/zh/doc-detail/160384.htm?admitad_uid=25d4c1c226ee0b89e4b674c63a38c56d&admitad_pubid=235249)
+
+- third-party-jwt
+
+  可以指定ServiceAccount的jwt token中的audience和过期时间字段。默认配置中Kubernetes是不会使用这个特性，可以按照 [Service Account Token Volume Projection](https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/#service-account-token-volume-projection) 所述来开启这个特性。
+
+这个值在Istio中可以通过JWT_POLICY环境变量来配置(CA Server和SDS Server都是通过这个环境变量进行配置)，默认值是third-party-jwt。在部署时Istio会检测Kubernetes是否已经开启了这个特性，如果没有开启时，并且用户明确配置了要使用这种方式，会发出一个警告信息，然后回退到first-party-jwt模式。
+
+当使用first-party-jwt模式，JWT Token解析后的中间部分的内容如下，第一个是CA Server中，第二个是SDS Server中
+
+``` json
+{
+  "iss": "kubernetes/serviceaccount",
+  "kubernetes.io/serviceaccount/namespace": "istio-system",
+  "kubernetes.io/serviceaccount/secret.name": "istiod-service-account-token-97p6c",
+  "kubernetes.io/serviceaccount/service-account.name": "istiod-service-account",
+  "kubernetes.io/serviceaccount/service-account.uid": "effcaa6c-0595-4320-9897-e9f9bb9a411d",
+  "sub": "system:serviceaccount:istio-system:istiod-service-account"
+}
+```
+
+``` json
+{
+  "iss": "kubernetes/serviceaccount",
+  "kubernetes.io/serviceaccount/namespace": "foo",
+  "kubernetes.io/serviceaccount/secret.name": "httpbin-token-c4mdk",
+  "kubernetes.io/serviceaccount/service-account.name": "httpbin",
+  "kubernetes.io/serviceaccount/service-account.uid": "22ef4914-614d-4d04-aa3a-7cd0f3ce3a78",
+  "sub": "system:serviceaccount:foo:httpbin"
+}
+```
+
+下面分别针对CA Server和SDS Server，看下其中的JWT Token文件是如何配置和使用的。
+
+### CA Server ###
+
+部署时，CA Server中相关配置如下
+
+``` yaml
+      containers:
+        - name: discovery
+          ...
+          args:
+          - "discovery"
+          ...
+          - name: JWT_POLICY
+            value: {{ .Values.global.jwtPolicy }}
+          ...
+          volumeMounts:
+          {{- if eq .Values.global.jwtPolicy "third-party-jwt" }}
+          - name: istio-token
+            mountPath: /var/run/secrets/tokens
+            readOnly: true
+          {{- end }}
+          ...
+      volumes:
+      {{- if eq .Values.global.jwtPolicy "third-party-jwt" }}
+      - name: istio-token
+        projected:
+          sources:
+            - serviceAccountToken:
+                audience: {{ .Values.global.sds.token.aud }}
+                expirationSeconds: 43200
+                path: istio-token
+      {{- end }}
+```
+
+如果是采用third-party-jwt模式，则会为jwt token设置一个过期时间和audience值，并且将其挂载到`/var/run/secrets/tokens`路径下
+
+在Istiod启动时根据配置会读取相关文件
+
+``` golang
+	// ThirdPartyJWTPath is the well-known location of the projected K8S JWT. This is mounted on all workloads, as well as istiod.
+	ThirdPartyJWTPath = "./var/run/secrets/tokens/istio-token"
+
+    ...
+
+	// K8sSAJwtFileName is the token volume mount file name for k8s jwt token.
+	K8sSAJwtFileName = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+```
+
+``` go
+	log.Infof("JWT policy is %s", features.JwtPolicy.Get())
+	switch features.JwtPolicy.Get() {
+	case jwt.JWTPolicyThirdPartyJWT:
+		s.jwtPath = ThirdPartyJWTPath
+	case jwt.JWTPolicyFirstPartyJWT:
+		s.jwtPath = securityModel.K8sSAJwtFileName
+	default:
+		err := fmt.Errorf("invalid JWT policy %v", features.JwtPolicy.Get())
+		log.Errorf("%v", err)
+		return nil, err
+	}
+```
+
+最终会用于CA Server与SDS Server进行互相认证的时候，代码如下
+
+``` go
+	ch := make(chan struct{})
+	token, err := ioutil.ReadFile(s.jwtPath)
+	if err == nil {
+		tok, err := detectAuthEnv(string(token))
+		if err != nil {
+			log.Warna("Starting with invalid K8S JWT token", err, string(token))
+		} else {
+			if iss == "" {
+				iss = tok.Iss
+			}
+			if len(tok.Aud) > 0 && len(aud) == 0 {
+				aud = tok.Aud[0]
+			}
+		}
+	}
+
+    ...
+
+	// TODO: if not set, parse Istiod's own token (if present) and get the issuer. The same issuer is used
+	// for all tokens - no need to configure twice. The token may also include cluster info to auto-configure
+	// networking properties.
+	if iss != "" && // issuer set explicitly or extracted from our own JWT
+		k8sInCluster.Get() == "" { // not running in cluster - in cluster use direct call to apiserver
+		// Add a custom authenticator using standard JWT validation, if not running in K8S
+		// When running inside K8S - we can use the built-in validator, which also check pod removal (invalidation).
+		oidcAuth, err := newJwtAuthenticator(iss, opts.TrustDomain, aud)
+		if err == nil {
+			caServer.Authenticators = append(caServer.Authenticators, oidcAuth)
+			log.Infoa("Using out-of-cluster JWT authentication")
+		} else {
+			log.Infoa("K8S token doesn't support OIDC, using only in-cluster auth")
+		}
+	}
+```
+
+代码逻辑是如果读取了JWT Token中相关数据并且Istiod不在Kubernetes集群中运行，会启用jwtAuthenticator这种认证方式，CA Server会通过OpenID Connect (OIDC) 向Kubernetes API Server验证请求中的JWT Token。
+
+### SDS Server ###
+
+在Pilot Agent部署时也类似于Istiod，如果是采用third-party-jwt模式，则会为jwt token设置一个过期时间和audience值，并且将其挂载到`/var/run/secrets/tokens`路径下
+
+``` yaml
+      containers:
+      - name: istio-proxy
+        ...
+        ports:
+        - containerPort: 15090
+          protocol: TCP
+          name: http-envoy-prom
+        args:
+        - proxy
+        - sidecar
+        ...
+        volumeMounts:
+        {{- if eq .Values.global.jwtPolicy "third-party-jwt" }}
+        - mountPath: /var/run/secrets/tokens
+          name: istio-token
+        {{- end }}
+      ...
+      volumes:
+      {{- if eq .Values.global.jwtPolicy "third-party-jwt" }}
+      - name: istio-token
+        projected:
+          sources:
+          - serviceAccountToken:
+              path: istio-token
+              expirationSeconds: 43200
+              audience: {{ .Values.global.sds.token.aud }}
+      {{- end }}
+```
+
+在SDS Server启动时读取
+
+``` golang
+	trustworthyJWTPath = "./var/run/secrets/tokens/istio-token"
+    ...
+	K8sSAJwtFileName = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+```
+
+``` golang
+			var jwtPath string
+			if jwtPolicy.Get() == jwt.JWTPolicyThirdPartyJWT {
+				log.Info("JWT policy is third-party-jwt")
+				jwtPath = trustworthyJWTPath
+			} else if jwtPolicy.Get() == jwt.JWTPolicyFirstPartyJWT {
+				log.Info("JWT policy is first-party-jwt")
+				jwtPath = securityModel.K8sSAJwtFileName
+			} else {
+				log.Info("Using existing certs")
+			}
+
+```
+
+最终会从中提取出Namespace和ServiceAccount信息，生成证书签名请求
+
+``` go
+	// identityTemplate is the format template of identity in the CSR request.
+	identityTemplate = "spiffe://%s/ns/%s/sa/%s"
+```
+
+另外，当启用了google plugin时(通过Pilot Agent的PLUGINS环境变量进行配置)还会用这个JWT Token进行token交换操作，默认不开启。
